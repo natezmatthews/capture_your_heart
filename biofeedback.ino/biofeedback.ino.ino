@@ -5,18 +5,21 @@
 MAX30105 particleSensor;
 
 const int bufferCount = 20;
-double weightNumerator = 8.0;
-double weightDenominator = 10.0;
+double weightNumerator = 19.0;
+double weightDenominator = 20.0;
 double weights [bufferCount];
 double weightsSum = 0;
 double values [bufferCount];
 
 int samplesSoFar = 0;
+int x = 1;
+
+double steadyWeightedDeviation = 0.0;
 
 const int wavelengthCount = 30;
-// int wavelengthsSoFar = 0;
-// int wavelengths [wavelengthCount];
-RunningMedian runningMedian = RunningMedian(wavelengthCount);
+int wavelengthsSoFar = 0;
+int wavelengths [wavelengthCount];
+// RunningMedian runningMedian = RunningMedian(wavelengthCount);
 int waveStage = 0; // 0 - Going up, 1 - Starting top part, 2 - Ending top part, 3 - Going down, 4 - Starting down part, 5 - Ending down part
 int lastStart = 0;
 int lastPeakStart = 0;
@@ -62,6 +65,13 @@ void shiftAndInsert(double array[], int bufferCount, double newValue) {
   array[0] = newValue;
 }
 
+void shiftAndInsert(int array[], int bufferCount, double newValue) {
+  for (int i = bufferCount - 1; i > 0; i--) {
+    array[i] = array[i - 1];
+  }
+  array[0] = newValue;
+}
+
 void loop()
 {
   double currVal = double (particleSensor.getIR());
@@ -88,15 +98,18 @@ void loop()
     weightedSumAbsErrors += error * weights[i];
   }
   double weightedDeviation = weightedSumAbsErrors / weightsSum;
+  
 
   double threshold = weightedDeviation / 2;
-  if (waveStage == 0 && currVal > threshold) {
+  if (waveStage == 0 && currVal > weightedAverage + threshold) {
     waveStage = 1;
-    runningMedian.add(samplesSoFar - lastPeakStart)
     shiftAndInsert(wavelengths, wavelengthCount, samplesSoFar - lastPeakStart);
     wavelengthsSoFar++;
     lastPeakStart = samplesSoFar;
-  } else if (waveStage == 1 && currVal < threshold) {
+
+    steadyWeightedDeviation = weightedDeviation;
+
+  } else if (waveStage == 1 && currVal < weightedAverage + threshold) {
     waveStage = 2;
     shiftAndInsert(wavelengths, wavelengthCount, samplesSoFar - lastPeakEnd);
     wavelengthsSoFar++;
@@ -122,13 +135,74 @@ void loop()
     wavelengthsSoFar++;
     lastStart = samplesSoFar;
   }
-  if 
+
+  double wavelengthAvg = 0.0;
+  double wavelengthVariance = 0.0;
+  if (wavelengthsSoFar >= wavelengthCount) {
+    double wavelengthSum = 0.0;
+    for (int i = 0; i < wavelengthCount; i++) {
+      wavelengthSum += double (wavelengths[i]);
+    }
+    wavelengthAvg = wavelengthSum / wavelengthCount;
+    for (int i = 0; i < wavelengthCount; i++) {
+      double error = double (wavelengths[i]) - wavelengthAvg;
+      wavelengthVariance += error * error;
+    }
+  }
+
+  // long median = runningMedian.getMedian();
+  // if (samplesSoFar % (median / 2) == 0) {
+  //   if (x == 1) {
+  //     x = -1;
+  //   } else {
+  //     x = 1;
+  //   }
+  //   // for (int i = 0; i < median; i++) {
+  //   //   Serial.print('*');
+  //   // }
+  //   // Serial.print('\n');
+  // }
 
   double normalized = (currVal * weightsSum - weightedSum) / weightedSumAbsErrors;
   int toDisplay = int (normalized * 100.0);
   // Serial.println("-----");
-  // Serial.println(values[0]);
+  // Serial.println(currVal);
   // Serial.println(weightedSum / weightsSum);
   // Serial.println(weightedSumAbsErrors / weightsSum);
-  Serial.println(toDisplay);
+  // Serial.println(toDisplay);
+
+  Serial.print("Avg:");
+  Serial.print(wavelengthAvg);
+  Serial.print(", Variance");
+  Serial.println(wavelengthVariance);
+
+
+  // Serial.print("Main_value:");
+  // Serial.print(toDisplay);
+  // Serial.print(",");
+  // Serial.print("isWave:");
+  // if (wavelengthVariance < 1000) {
+  //   switch(waveStage) {
+  //     case 0:
+  //       Serial.println(0);
+  //       break;
+  //     case 1:
+  //       Serial.println(1.0 * steadyWeightedDeviation);
+  //       break;
+  //     case 2:
+  //       Serial.println(0.5 * steadyWeightedDeviation);
+  //       break;
+  //     case 3:
+  //       Serial.println(0);
+  //       break;
+  //     case 4:
+  //       Serial.println(-1.0 * steadyWeightedDeviation);
+  //       break;
+  //     case 5:
+  //       Serial.println(-0.5 * steadyWeightedDeviation);
+  //       break;
+  //   }
+  // } else {
+  //   Serial.println(0);
+  // }
 }
