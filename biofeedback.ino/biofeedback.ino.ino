@@ -4,9 +4,9 @@
 
 MAX30105 particleSensor;
 
-const int bufferCount = 50;
-double weightNumerator = 19.0;
-double weightDenominator = 20.0;
+const int bufferCount = 11;
+double weightNumerator = 1.0;
+double weightDenominator = 1.0;
 double weights [bufferCount];
 double weightsSum = 0;
 double values [bufferCount];
@@ -17,11 +17,12 @@ int x = 1;
 
 double steadyWeightedDeviation = 0.0;
 
-const int wavelengthCount = 60;
+const int wavelengthCount = 5;
 int wavelengthsSoFar = 0;
 int wavelengths [wavelengthCount];
 RunningMedian runningMedian = RunningMedian(wavelengthCount);
-int waveStage = 0; // 0 - Going up, 1 - Starting top part, 2 - Ending top part, 3 - Going down, 4 - Starting down part, 5 - Ending down part
+// int waveStage = 0; // 0 - Going up, 1 - Starting top part, 2 - Ending top part, 3 - Going down, 4 - Starting down part, 5 - Ending down part
+bool aboveAverage = true;
 int lastStart = 0;
 int lastPeakStart = 0;
 int lastPeakEnd = 0;
@@ -108,11 +109,9 @@ void loop()
   }
   double weightedDeviation = weightedSumAbsErrors / weightsSum;
   
-
-  double threshold = weightedDeviation / 2;
   int diff = 0;
-  if (waveStage == 0 && currVal > weightedAverage + threshold) {
-    waveStage = 1;
+  if (aboveAverage && currVal < weightedAverage) {
+    aboveAverage = false;
     diff = samplesSoFar - lastPeakStart;
     shiftAndInsert(wavelengths, wavelengthCount, diff);
     runningMedian.add(diff);
@@ -121,42 +120,58 @@ void loop()
 
     steadyWeightedDeviation = weightedDeviation;
 
-  } else if (waveStage == 1 && currVal < weightedAverage + threshold) {
-    waveStage = 2;
-    diff = samplesSoFar - lastPeakEnd;
-    shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
-    wavelengthsSoFar++;
-    lastPeakEnd = samplesSoFar;
-  } else if (waveStage == 2 && currVal < weightedAverage) {
-    waveStage = 3;
-    diff = samplesSoFar - lastMiddle;
-    shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
-    wavelengthsSoFar++;
-    lastMiddle = samplesSoFar;
-  } else if (waveStage == 3 && currVal < weightedAverage - threshold) {
-    waveStage = 4;
-    diff = samplesSoFar - lastValleyStart;
-    shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
-    wavelengthsSoFar++;
-    lastValleyStart = samplesSoFar;
-  } else if (waveStage == 4 && currVal > weightedAverage - threshold) {
-    waveStage = 5;
-    diff = samplesSoFar - lastValleyEnd;
-    shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
-    wavelengthsSoFar++;
-    lastValleyEnd = samplesSoFar;
-  } else if (waveStage == 5 && currVal > weightedAverage) {
-    waveStage = 0;
-    diff = samplesSoFar - lastStart;
-    shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
-    wavelengthsSoFar++;
-    lastStart = samplesSoFar;
+  } else if (!aboveAverage && currVal >= weightedAverage) {
+    aboveAverage = true;
   }
+
+  // double threshold = weightedDeviation / 2;
+  // int diff = 0;
+  // if (waveStage == 0 && currVal > weightedAverage + threshold) {
+  //   waveStage = 1;
+  //   diff = samplesSoFar - lastPeakStart;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastPeakStart = samplesSoFar;
+
+  //   steadyWeightedDeviation = weightedDeviation;
+
+  // } else if (waveStage == 1 && currVal < weightedAverage + threshold) {
+  //   waveStage = 2;
+  //   diff = samplesSoFar - lastPeakEnd;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastPeakEnd = samplesSoFar;
+  // } else if (waveStage == 2 && currVal < weightedAverage) {
+  //   waveStage = 3;
+  //   diff = samplesSoFar - lastMiddle;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastMiddle = samplesSoFar;
+  // } else if (waveStage == 3 && currVal < weightedAverage - threshold) {
+  //   waveStage = 4;
+  //   diff = samplesSoFar - lastValleyStart;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastValleyStart = samplesSoFar;
+  // } else if (waveStage == 4 && currVal > weightedAverage - threshold) {
+  //   waveStage = 5;
+  //   diff = samplesSoFar - lastValleyEnd;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastValleyEnd = samplesSoFar;
+  // } else if (waveStage == 5 && currVal > weightedAverage) {
+  //   waveStage = 0;
+  //   diff = samplesSoFar - lastStart;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastStart = samplesSoFar;
+  // }
 
   long median = runningMedian.getMedian();
   // double wavelengthAvg = 0.0;
@@ -211,30 +226,39 @@ void loop()
   // Serial.print(currVal - unblockedValue);
   Serial.print("reading:");
   Serial.print(toDisplay);
-  Serial.print(",");
-  Serial.print("wave:");
+  Serial.print(",wave:");
   if (currVal - unblockedValue > 50000) {
-    switch(waveStage) {
-      case 0:
-        Serial.println(0.25 * steadyWeightedDeviation);
-        break;
-      case 1:
-        Serial.println(.5 * steadyWeightedDeviation);
-        break;
-      case 2:
-        Serial.println(1.0 * steadyWeightedDeviation);
-        break;
-      case 3:
-        Serial.println(-0.25 * steadyWeightedDeviation);
-        break;
-      case 4:
-        Serial.println(-0.5 * steadyWeightedDeviation);
-        break;
-      case 5:
-        Serial.println(-1.0 * steadyWeightedDeviation);
-        break;
+    if (aboveAverage) {
+      Serial.println(steadyWeightedDeviation);
+    } else {
+      Serial.println(-1.0 * steadyWeightedDeviation);
     }
   } else {
-    Serial.println(0);
+    Serial.println(toDisplay);
   }
+  // Serial.print("wave:");
+  // if (currVal - unblockedValue > 50000) {
+  //   switch(waveStage) {
+  //     case 0:
+  //       Serial.println(0.25 * steadyWeightedDeviation);
+  //       break;
+  //     case 1:
+  //       Serial.println(.5 * steadyWeightedDeviation);
+  //       break;
+  //     case 2:
+  //       Serial.println(1.0 * steadyWeightedDeviation);
+  //       break;
+  //     case 3:
+  //       Serial.println(-0.25 * steadyWeightedDeviation);
+  //       break;
+  //     case 4:
+  //       Serial.println(-0.5 * steadyWeightedDeviation);
+  //       break;
+  //     case 5:
+  //       Serial.println(-1.0 * steadyWeightedDeviation);
+  //       break;
+  //   }
+  // } else {
+  //   Serial.println(0);
+  // }
 }
