@@ -91,38 +91,62 @@ void loop()
     return;
   }
 
-  double weightedSum = 0;
+  double max = currVal;
+  double min = currVal;
   for (int i = 0; i < bufferCount; i++) {
-    weightedSum += values[i] * weights[i];
+    if (max < values[i]) {
+      max = values[i];
+    }
+    if (min > values[i]) {
+      min = values[i];
+    }
   }
-  double weightedAverage = weightedSum / weightsSum;
+  double middle = (max + min) / 2;
 
-  double weightedSumAbsErrors = 0;
-  for (int i = 0; i < bufferCount; i++) {
-    double error = 0;
-    if (values[i] > weightedAverage) {
-      error = values[i] - weightedAverage;
-    } else {
-      error = weightedAverage - values[i];
-    };
-    weightedSumAbsErrors += error * weights[i];
-  }
-  double weightedDeviation = weightedSumAbsErrors / weightsSum;
-  
   int diff = 0;
-  if (aboveAverage && currVal < weightedAverage) {
+  if (aboveAverage && currVal < middle) {
     aboveAverage = false;
     diff = samplesSoFar - lastPeakStart;
     shiftAndInsert(wavelengths, wavelengthCount, diff);
     runningMedian.add(diff);
     wavelengthsSoFar++;
     lastPeakStart = samplesSoFar;
-
-    steadyWeightedDeviation = weightedDeviation;
-
-  } else if (!aboveAverage && currVal >= weightedAverage) {
+  } else if (!aboveAverage && currVal >= middle) {
     aboveAverage = true;
   }
+
+  // double weightedSum = 0;
+  // for (int i = 0; i < bufferCount; i++) {
+  //   weightedSum += values[i] * weights[i];
+  // }
+  // double weightedAverage = weightedSum / weightsSum;
+
+  // double weightedSumAbsErrors = 0;
+  // for (int i = 0; i < bufferCount; i++) {
+  //   double error = 0;
+  //   if (values[i] > weightedAverage) {
+  //     error = values[i] - weightedAverage;
+  //   } else {
+  //     error = weightedAverage - values[i];
+  //   };
+  //   weightedSumAbsErrors += error * weights[i];
+  // }
+  // double weightedDeviation = weightedSumAbsErrors / weightsSum;
+  
+  // int diff = 0;
+  // if (aboveAverage && currVal < weightedAverage) {
+  //   aboveAverage = false;
+  //   diff = samplesSoFar - lastPeakStart;
+  //   shiftAndInsert(wavelengths, wavelengthCount, diff);
+  //   runningMedian.add(diff);
+  //   wavelengthsSoFar++;
+  //   lastPeakStart = samplesSoFar;
+
+  //   steadyWeightedDeviation = weightedDeviation;
+
+  // } else if (!aboveAverage && currVal >= weightedAverage) {
+  //   aboveAverage = true;
+  // }
 
   // double threshold = weightedDeviation / 2;
   // int diff = 0;
@@ -200,8 +224,9 @@ void loop()
   //   // Serial.print('\n');
   // }
 
-  double normalized = (currVal * weightsSum - weightedSum) / weightedSumAbsErrors;
-  int toDisplay = int (normalized * 100.0);
+  double normalized = (2*currVal - (max+min)) / (max - min) * 100;
+  // double normalized = (currVal * weightsSum - weightedSum) / weightedSumAbsErrors;
+  // int toDisplay = int (normalized * 100.0);
   
   // Serial.println("-----");
   // Serial.println(currVal);
@@ -225,16 +250,18 @@ void loop()
   // Serial.print("diff:");
   // Serial.print(currVal - unblockedValue);
   Serial.print("reading:");
-  Serial.print(toDisplay);
+  Serial.print(normalized);
+  Serial.print(",variance:");
+  Serial.print(wavelengthVariance / wavelengthCount);
   Serial.print(",wave:");
   if (currVal - unblockedValue > 50000) {
     if (aboveAverage) {
-      Serial.println(steadyWeightedDeviation);
+      Serial.println(100);
     } else {
-      Serial.println(-1.0 * steadyWeightedDeviation);
+      Serial.println(-100);
     }
   } else {
-    Serial.println(toDisplay);
+    Serial.println(normalized);
   }
   // Serial.print("wave:");
   // if (currVal - unblockedValue > 50000) {
