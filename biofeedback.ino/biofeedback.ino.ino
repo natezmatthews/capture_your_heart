@@ -4,12 +4,21 @@
 
 MAX30105 particleSensor;
 
-const int bufferCount = 11;
+const int bufferCount = 20;
 double weightNumerator = 1.0;
 double weightDenominator = 1.0;
 double weights [bufferCount];
 double weightsSum = 0;
 double values [bufferCount];
+
+const int recordingCount = 50;
+double recording [recordingCount];
+double completeRecording [recordingCount];
+int recordingLength = 0;
+bool recordingComplete = false;
+int endOfRecording;
+double recordingMax;
+double recordingMin;
 
 int samplesSoFar = 0;
 long unblockedValue = 0;
@@ -20,7 +29,7 @@ double steadyWeightedDeviation = 0.0;
 const int wavelengthCount = 5;
 int wavelengthsSoFar = 0;
 int wavelengths [wavelengthCount];
-RunningMedian runningMedian = RunningMedian(wavelengthCount);
+// RunningMedian runningMedian = RunningMedian(wavelengthCount);
 // int waveStage = 0; // 0 - Going up, 1 - Starting top part, 2 - Ending top part, 3 - Going down, 4 - Starting down part, 5 - Ending down part
 bool aboveAverage = true;
 int lastStart = 0;
@@ -82,6 +91,10 @@ void shiftAndInsert(int array[], int bufferCount, double newValue) {
   array[0] = newValue;
 }
 
+double normalize(double max, double min, double val) {
+  return ((2*val - (max+min)) / (max - min)) * 100;
+}
+
 void loop()
 {
   double currVal = double (particleSensor.getIR());
@@ -108,7 +121,7 @@ void loop()
     aboveAverage = false;
     diff = samplesSoFar - lastPeakStart;
     shiftAndInsert(wavelengths, wavelengthCount, diff);
-    runningMedian.add(diff);
+    // runningMedian.add(diff);
     wavelengthsSoFar++;
     lastPeakStart = samplesSoFar;
   } else if (!aboveAverage && currVal >= middle) {
@@ -197,20 +210,53 @@ void loop()
   //   lastStart = samplesSoFar;
   // }
 
-  long median = runningMedian.getMedian();
-  // double wavelengthAvg = 0.0;
+  // long median = runningMedian.getMedian();
+  double wavelengthAvg = 0.0;
   double wavelengthVariance = 0.0;
   if (wavelengthsSoFar >= wavelengthCount) {
-    // double wavelengthSum = 0.0;
-    // for (int i = 0; i < wavelengthCount; i++) {
-    //   wavelengthSum += double (wavelengths[i]);
-    // }
-    // wavelengthAvg = wavelengthSum / wavelengthCount;
+    double wavelengthSum = 0.0;
     for (int i = 0; i < wavelengthCount; i++) {
-      double error = double (wavelengths[i]) - median;
+      wavelengthSum += double (wavelengths[i]);
+    }
+    wavelengthAvg = wavelengthSum / wavelengthCount;
+    for (int i = 0; i < wavelengthCount; i++) {
+      double error = double (wavelengths[i]) - wavelengthAvg;
       wavelengthVariance += error * error;
     }
   }
+
+  double isTouched = currVal - unblockedValue > 50000;
+
+  if (isTouched && wavelengthVariance < wavelengthCount) {
+    recording[recordingLength] = currVal;
+    recordingLength++;
+    if (recordingLength == recordingCount) {
+      recordingMax = recording[0];
+      recordingMin = recording[0];
+      for (int i = 0; i < recordingCount; i++) {
+        completeRecording[i] = recording[i];
+        if (recordingMax < recording[i]) {
+          recordingMax = recording[i];
+        }
+        if (recordingMin > recording[i]) {
+          recordingMin = recording[i];
+        }
+      }
+      recordingComplete = true;
+    }
+  } else {
+    recordingLength = 0;
+  }
+
+  // if (wavelengthVariance < wavelengthCount && currVal - unblockedValue > 50000) {
+  //   shiftAndInsert(recording, recordingCount, currVal);
+  //   recordingLength++;
+  // } else {
+  //   recordingLength = 0;
+  // }
+  // if (recordingLength >= bufferCount) {
+     
+  // }
   
   // if (samplesSoFar % (median / 2) == 0) {
   //   if (x == 1) {
@@ -224,7 +270,6 @@ void loop()
   //   // Serial.print('\n');
   // }
 
-  double normalized = (2*currVal - (max+min)) / (max - min) * 100;
   // double normalized = (currVal * weightsSum - weightedSum) / weightedSumAbsErrors;
   // int toDisplay = int (normalized * 100.0);
   
@@ -249,19 +294,31 @@ void loop()
 
   // Serial.print("diff:");
   // Serial.print(currVal - unblockedValue);
+  double normalized = normalize(max,min,currVal);
   Serial.print("reading:");
   Serial.print(normalized);
-  Serial.print(",variance:");
-  Serial.print(wavelengthVariance / wavelengthCount);
+  Serial.print(",recording:");
+  Serial.print(100 - recordingLength * 4);
+  // if (wavelengthVariance < wavelengthCount && currVal - unblockedValue > 50000) {
+
+  // }
+  // Serial.print(",variance:");
+  // Serial.print(wavelengthVariance / wavelengthCount);
   Serial.print(",wave:");
-  if (currVal - unblockedValue > 50000) {
+  if (isTouched) {
     if (aboveAverage) {
       Serial.println(100);
     } else {
       Serial.println(-100);
     }
   } else {
-    Serial.println(normalized);
+    if (recordingComplete) {
+      // Serial.println(200);
+      Serial.println(normalize(recordingMax,recordingMin,completeRecording[samplesSoFar % recordingCount]));
+    }
+    else {
+      Serial.println(normalized);
+    }
   }
   // Serial.print("wave:");
   // if (currVal - unblockedValue > 50000) {
