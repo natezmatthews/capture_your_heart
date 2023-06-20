@@ -1,6 +1,13 @@
 #include <Wire.h>
 #include "MAX30105.h"
 
+#include <FastLED.h>
+#define NUM_LEDS 150
+#define DATA_PIN 25
+
+CRGB leds[NUM_LEDS];
+
+
 MAX30105 particleSensor;
 
 const int bufferCount = 20;
@@ -43,7 +50,7 @@ void setup()
   }
 
   //Setup to sense a nice looking saw tooth on the plotter
-  byte ledBrightness = 0x1F; //Options: 0=Off to 255=50mA
+  byte ledBrightness = 0x3F; //Options: 0=Off to 255=50mA
   byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
   byte ledMode = 2; //Options: 1 = Red only, 2 = Red + IR, 3 = Red + IR + Green
   int sampleRate = 100; //Options: 50, 100, 200, 400, 800, 1000, 1600, 3200
@@ -66,6 +73,9 @@ void setup()
     unblockedValue += particleSensor.getIR(); //Read the IR value
   }
   unblockedValue /= 32;
+
+  // LED time
+  FastLED.addLeds<WS2811,DATA_PIN>(leds, NUM_LEDS);
 }
 
 void shiftAndInsert(double array[], int bufferCount, double newValue) {
@@ -165,6 +175,13 @@ void loop()
     recordingLength = 0;
   }
 
+  
+  if (aboveAverage) {
+    leds[0] = CRGB::Red;
+  } else {
+    leds[0] = CRGB::Blue;
+  }
+  FastLED.show();
   
   double normalized = normalize(max,min,currVal);
   Serial.print("actual_value:");
