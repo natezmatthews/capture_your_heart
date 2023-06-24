@@ -7,7 +7,6 @@
 
 CRGB leds[NUM_LEDS];
 
-
 MAX30105 particleSensor;
 
 const int bufferCount = 20;
@@ -75,7 +74,7 @@ void setup()
   unblockedValue /= 32;
 
   // LED time
-  FastLED.addLeds<WS2811,DATA_PIN>(leds, NUM_LEDS);
+  FastLED.addLeds<WS2811,DATA_PIN,GRB>(leds, NUM_LEDS);
 }
 
 void shiftAndInsert(double array[], int bufferCount, double newValue) {
@@ -175,12 +174,8 @@ void loop()
     recordingLength = 0;
   }
 
-  
-  if (aboveAverage) {
-    leds[0] = CRGB::Red;
-  } else {
-    leds[0] = CRGB::Blue;
-  }
+  uint8_t brightness = (currVal - min) * 255 / (max - min);
+  fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
   FastLED.show();
   
   double normalized = normalize(max,min,currVal);
