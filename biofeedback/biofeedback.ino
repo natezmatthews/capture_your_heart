@@ -2,8 +2,11 @@
 #include "MAX30105.h"
 
 #include <FastLED.h>
-#define NUM_LEDS 150
-#define DATA_PIN 25
+#define DATA_PIN    25
+#define LED_TYPE    WS2811
+#define COLOR_ORDER GRB
+#define NUM_LEDS    150
+#define BRIGHTNESS  255
 
 CRGB leds[NUM_LEDS];
 
@@ -73,8 +76,13 @@ void setup()
   }
   unblockedValue /= 32;
 
-  // LED time
-  FastLED.addLeds<WS2811,DATA_PIN,GRB>(leds, NUM_LEDS);
+  // tell FastLED about the LED strip configuration
+  FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS)
+    .setCorrection(TypicalLEDStrip)
+    .setDither(BRIGHTNESS < 255);
+
+  // set master brightness control
+  FastLED.setBrightness(BRIGHTNESS);
 }
 
 void shiftAndInsert(double array[], int bufferCount, double newValue) {
@@ -101,6 +109,33 @@ double normalize(double max, double min, double val) {
 // Different domes
 // Loading animation for good recording
 // Back to uint8_t
+
+void pride(uint8_t bri8) 
+{
+  static uint16_t sLastMillis = 0;
+  static uint16_t sHue16 = 0;
+ 
+  uint8_t sat8 = beatsin88( 87, 220, 250);
+  uint16_t hue16 = sHue16;
+  uint16_t hueinc16 = beatsin88(113, 1, 3000);
+  
+  uint16_t ms = millis();
+  uint16_t deltams = ms - sLastMillis ;
+  sLastMillis  = ms;
+  sHue16 += deltams * beatsin88( 400, 5,9);
+  
+  for( uint16_t i = 0 ; i < NUM_LEDS; i++) {
+    hue16 += hueinc16;
+    uint8_t hue8 = hue16 / 256;
+    
+    CRGB newcolor = CHSV( hue8, sat8, bri8);
+    
+    uint16_t pixelnumber = i;
+    pixelnumber = (NUM_LEDS-1) - pixelnumber;
+    
+    nblend( leds[pixelnumber], newcolor, 64);
+  }
+}
 
 void loop()
 {
@@ -182,7 +217,8 @@ void loop()
   }
 
   uint8_t brightness = (currVal - min) * 255 / (max - min);
-  fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
+  pride(brightness);
+  // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
   FastLED.show();
   
   double normalized = normalize(max,min,currVal);
