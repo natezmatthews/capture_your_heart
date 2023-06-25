@@ -95,6 +95,13 @@ double normalize(double max, double min, double val) {
   return ((2*val - (max+min)) / (max - min)) * 100;
 }
 
+// TODO:
+// Flicker rainbow
+// Second recording
+// Different domes
+// Loading animation for good recording
+// Back to uint8_t
+
 void loop()
 {
   // INITIAL COLLECTION
