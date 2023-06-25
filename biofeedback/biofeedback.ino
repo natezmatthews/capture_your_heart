@@ -103,11 +103,17 @@ double normalize(double max, double min, double val) {
   return ((2*val - (max+min)) / (max - min)) * 100;
 }
 
+uint8_t to_brightness(double max, double min, double val) {
+  return (val - min) * 255 / (max - min);
+}
+
 // TODO:
 // Flicker rainbow
 // Second recording
 // Different domes
 // Loading animation for good recording
+// Sine wave instead of raw heartbeat
+// Reevaluate cutting off end of recording
 // Back to uint8_t
 
 void pride(uint8_t bri8) 
@@ -216,9 +222,15 @@ void loop()
     recordingLength = 0;
   }
 
-  uint8_t brightness = (currVal - min) * 255 / (max - min);
-  pride(brightness);
+  // uint8_t brightness = (currVal - min) * 255 / (max - min);
+  uint8_t brightness = 255;
+  if (isTouched) {
+    brightness = to_brightness(max, min, currVal);
+  } else if (recordingComplete) {
+    brightness = to_brightness(recordingMax, recordingMin, completeRecording[samplesSoFar % endOfRecording]);
+  }
   // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
+  pride(brightness);
   FastLED.show();
   
   double normalized = normalize(max,min,currVal);
