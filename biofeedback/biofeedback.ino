@@ -21,22 +21,27 @@ double values [bufferCount];
 
 const int recordingCount = 50;
 double recording [recordingCount];
-double completeRecording [recordingCount];
 int recordingLength = 0;
-bool recordingComplete = false;
-int endOfRecording;
-double recordingMax;
-double recordingMin;
+
+double completeRecordingA [recordingCount];
+double completeRecordingB [recordingCount];
+double recordingAMax;
+double recordingAMin;
+double recordingBMax;
+double recordingBMin;
+bool recordingAComplete = false;
+bool recordingBComplete = false;
+bool changeNextRecordingIsAOnUntouch = false;
+bool nextRecordingIsA = true;
+// int endOfRecording;
 
 int samplesSoFar = 0;
 long unblockedValue = 0;
 
-double steadyWeightedDeviation = 0.0;
-
 const int wavelengthCount = 5;
 int wavelengthsSoFar = 0;
 int wavelengths [wavelengthCount];
-bool aboveAverage = true;
+bool aboveMiddle = true;
 int lastDipStart = 0;
 
 void setup()
@@ -113,10 +118,12 @@ uint8_t to_brightness(double max, double min, double val) {
 // Different domes
 // Loading animation for good recording
 // Sine wave instead of raw heartbeat
-// Reevaluate cutting off end of recording
+// Reimplement cutting off end of recording
+// Continuos recording rather than first take
 // Back to uint8_t
+// Add red reading as well as IR
 
-void pride(uint8_t bri8) 
+void pride(uint8_t bri8a, uint8_t bri8b) 
 {
   static uint16_t sLastMillis = 0;
   static uint16_t sHue16 = 0;
@@ -134,7 +141,8 @@ void pride(uint8_t bri8)
     hue16 += hueinc16;
     uint8_t hue8 = hue16 / 256;
     
-    CRGB newcolor = CHSV( hue8, sat8, bri8);
+    bool isA = i < (NUM_LEDS / 2);
+    CRGB newcolor = CHSV( hue8, sat8, isA ? bri8a : bri8b);
     
     uint16_t pixelnumber = i;
     pixelnumber = (NUM_LEDS-1) - pixelnumber;
@@ -143,11 +151,23 @@ void pride(uint8_t bri8)
   }
 }
 
+void debug_color(uint8_t bri8a, uint8_t bri8b) 
+{
+  for( uint16_t i = 0 ; i < NUM_LEDS; i++) {
+    bool isA = i < (NUM_LEDS / 2);
+    CRGB newcolor = CHSV( 90, 255, isA ? bri8a : bri8b);
+    
+    uint16_t pixelnumber = i;
+    pixelnumber = (NUM_LEDS-1) - pixelnumber;
+    leds[pixelnumber] = newcolor;
+  }
+}
+
 void loop()
 {
   // INITIAL COLLECTION
   double currVal = double (particleSensor.getIR());
-  bool isTouched = currVal > unblockedValue * 100;
+  bool isTouched = currVal > unblockedValue * 10;
   shiftAndInsert(values, bufferCount, currVal);
   samplesSoFar++; 
   if (samplesSoFar < bufferCount) {
@@ -168,13 +188,13 @@ void loop()
   double middle = (max + min) / 2;
 
   // WAVELENGTH GATHERING
-  if (aboveAverage && currVal < middle) {
-    aboveAverage = false;
+  if (aboveMiddle && currVal < middle) {
+    aboveMiddle = false;
     shiftAndInsert(wavelengths, wavelengthCount, samplesSoFar - lastDipStart);
     wavelengthsSoFar++;
     lastDipStart = samplesSoFar;
-  } else if (!aboveAverage && currVal >= middle) {
-    aboveAverage = true;
+  } else if (!aboveMiddle && currVal >= middle) {
+    aboveMiddle = true;
   }
 
   // WAVELENGTH AVG AND VARIANCE
@@ -192,62 +212,122 @@ void loop()
     }
   }
 
-
   // RECORDING
   if (isTouched && wavelengthVariance < wavelengthCount) {
-    recording[recordingLength] = currVal;
-    if (recordingLength < recordingCount) {
-      recordingLength++;
-    }
-    if (recordingLength == recordingCount) {
+    int recordingIndex = recordingLength % recordingCount;
+    recording[recordingIndex] = currVal;
+    recordingLength++;
+    if (recordingLength >= recordingCount && recordingIndex == 0) {
       // Save, and get max and min
-      recordingMax = recording[0];
-      recordingMin = recording[0];
-      for (int i = 0; i < recordingCount; i++) {
-        completeRecording[i] = recording[i];
-        if (recordingMax < recording[i]) {
-          recordingMax = recording[i];
+      changeNextRecordingIsAOnUntouch = true;
+      if (nextRecordingIsA) {
+        for (int i = 0; i < recordingCount; i++) {
+          completeRecordingA[i] = recording[i];
+          if (recordingAMax < recording[i]) {
+            recordingAMax = recording[i];
+          }
+          if (recordingAMin > recording[i]) {
+            recordingAMin = recording[i];
+          }
         }
-        if (recordingMin > recording[i]) {
-          recordingMin = recording[i];
+        recordingAComplete = true;
+      } else {
+        for (int i = 0; i < recordingCount; i++) {
+          completeRecordingB[i] = recording[i];
+          if (recordingBMax < recording[i]) {
+            recordingBMax = recording[i];
+          }
+          if (recordingBMin > recording[i]) {
+            recordingBMin = recording[i];
+          }
         }
+        recordingBComplete = true;
       }
-      recordingComplete = true;
+
+      // double * completeRecording;
+      // completeRecording = nextRecordingIsA ? completeRecordingA : completeRecordingB;
+      // double recordingMax = recording[0];
+      // double recordingMin = recording[0];
+      // for (int i = 0; i < recordingCount; i++) {
+      //   completeRecording[i] = recording[i];
+      //   if (recordingMax < recording[i]) {
+      //     recordingMax = recording[i];
+      //   }
+      //   if (recordingMin > recording[i]) {
+      //     recordingMin = recording[i];
+      //   }
+      // }
+
+      // if (nextRecordingIsA) {
+      //   recordingAComplete = true;
+      //   nextRecordingIsA = false;
+      //   recordingAMax = recordingMax;
+      //   recordingAMin = recordingMin;
+      // } else {
+      //   recordingBComplete = true;
+      //   nextRecordingIsA = true;
+      //   recordingBMax = recordingMax;
+      //   recordingBMin = recordingMin;
+      // }
       // Chop off end to make a smoother wave
       // Divide by wavelength average (but do it in a way that preserves more sig figs)
-      int numWavesInRecording = int ((recordingCount * wavelengthCount) / wavelengthSum);
-      endOfRecording = int ( ( ( double (numWavesInRecording) ) * wavelengthSum ) / wavelengthCount );
+      // int numWavesInRecording = int ((recordingCount * wavelengthCount) / wavelengthSum);
+      // endOfRecording = int ( ( ( double (numWavesInRecording) ) * wavelengthSum ) / wavelengthCount );
     }
   } else {
     recordingLength = 0;
   }
 
-  // uint8_t brightness = (currVal - min) * 255 / (max - min);
-  uint8_t brightness = 255;
-  if (isTouched) {
-    brightness = to_brightness(max, min, currVal);
-  } else if (recordingComplete) {
-    brightness = to_brightness(recordingMax, recordingMin, completeRecording[samplesSoFar % endOfRecording]);
+  if (changeNextRecordingIsAOnUntouch && !isTouched) {
+    nextRecordingIsA = !nextRecordingIsA;
+    recordingLength = 0;
   }
+
+  int recordingIndex = samplesSoFar % recordingCount;
+  uint8_t brightnessA = 255;
+  uint8_t brightnessB = 255;
+  if (recordingAComplete) {
+    brightnessA = to_brightness(recordingAMax, recordingAMin, completeRecordingA[recordingIndex]);
+  }
+  if (recordingBComplete) {
+    brightnessB = to_brightness(recordingBMax, recordingBMin, completeRecordingB[recordingIndex]);
+  }
+  if (isTouched) {
+    if (nextRecordingIsA) {
+      brightnessA = to_brightness(max, min, currVal);
+    } else {
+      brightnessB = to_brightness(max, min, currVal);
+    }
+  }
+
   // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
-  pride(brightness);
+  // pride(brightnessA, brightnessB);
+  debug_color(brightnessA, brightnessB);
   FastLED.show();
   
+  // Serial.print("currVal:");
+  // Serial.print(currVal);
+  // Serial.print(",unblockedVal:");
+  // Serial.print(unblockedValue);
+  // Serial.print(",wavelengthVariance:");
+  // Serial.println(wavelengthVariance);
+
   double normalized = normalize(max,min,currVal);
   Serial.print("actual_value:");
   Serial.print(normalized);
   Serial.print(",progress_towards_recording:");
-  Serial.print(-100 + recordingLength * 4);
+  int progress_towards_recording = -100 + recordingLength * 4;
+  Serial.print(progress_towards_recording > 100 ? 100 : progress_towards_recording);
   Serial.print(",recording:");
   if (isTouched) {
-    if (aboveAverage) {
+    if (aboveMiddle) {
       Serial.println(100);
     } else {
       Serial.println(-100);
     }
   } else {
-    if (recordingComplete) {
-      Serial.println(normalize(recordingMax,recordingMin,completeRecording[samplesSoFar % endOfRecording]));
+    if (recordingAComplete) {
+      Serial.println(normalize(recordingAMax,recordingAMin,completeRecordingA[samplesSoFar % recordingCount]));
     }
     else {
       Serial.println(0);
