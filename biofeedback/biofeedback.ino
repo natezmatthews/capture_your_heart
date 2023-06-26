@@ -221,6 +221,8 @@ void loop()
       // Save, and get max and min
       changeNextRecordingIsAOnUntouch = true;
       if (nextRecordingIsA) {
+        recordingAMax = recording[0];
+        recordingAMin = recording[0];
         for (int i = 0; i < recordingCount; i++) {
           completeRecordingA[i] = recording[i];
           if (recordingAMax < recording[i]) {
@@ -232,6 +234,8 @@ void loop()
         }
         recordingAComplete = true;
       } else {
+        recordingBMax = recording[0];
+        recordingBMin = recording[0];
         for (int i = 0; i < recordingCount; i++) {
           completeRecordingB[i] = recording[i];
           if (recordingBMax < recording[i]) {
@@ -280,6 +284,7 @@ void loop()
 
   if (changeNextRecordingIsAOnUntouch && !isTouched) {
     nextRecordingIsA = !nextRecordingIsA;
+    changeNextRecordingIsAOnUntouch = false;
     recordingLength = 0;
   }
 
