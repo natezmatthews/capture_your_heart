@@ -123,6 +123,52 @@ uint8_t to_brightness(double max, double min, double val) {
 // Back to uint8_t
 // Add red reading as well as IR
 
+uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
+{
+  uint16_t one_sixth_of_strip = NUM_LEDS / 6;
+  uint8_t one_third_brigthness = 255 / 3;
+  uint8_t two_thirds_brigthness = 2 * 255 / 3;
+  if (i < one_sixth_of_strip) {
+    // Serial.println('z');
+    return bri8a;
+  } else if ((one_sixth_of_strip * 1) < i && i < (one_sixth_of_strip * 2)) {
+    if (one_third_brigthness < bri8a) {
+      // Serial.println('a');
+      return bri8a;
+    } else {
+      // Serial.println('b');
+      return 0;
+    }
+  } else if ((one_sixth_of_strip * 2) < i && i < (one_sixth_of_strip * 3)) {
+    if (two_thirds_brigthness < bri8a) {
+      // Serial.println('c');
+      return bri8a;
+    } else {
+      // Serial.println('d');
+      return 0;
+    }
+  } else if ((one_sixth_of_strip * 3) < i && i < (one_sixth_of_strip * 4)) {
+    // Serial.println('e');
+    return bri8b;
+  } else if ((one_sixth_of_strip * 4) < i && i < (one_sixth_of_strip * 5)) {
+    if (one_third_brigthness < bri8b) {
+      // Serial.println('f');
+      return bri8b;
+    } else {
+      // Serial.println('g');
+      return 0;
+    }
+  } else if ((one_sixth_of_strip * 5) < i) {
+    if (two_thirds_brigthness < bri8b) {
+      // Serial.println('h');
+      return bri8b;
+    } else {
+      // Serial.println('i');
+      return 0;
+    }
+  }
+}
+
 void pride(uint8_t bri8a, uint8_t bri8b) 
 {
   static uint16_t sLastMillis = 0;
@@ -141,8 +187,9 @@ void pride(uint8_t bri8a, uint8_t bri8b)
     hue16 += hueinc16;
     uint8_t hue8 = hue16 / 256;
     
-    bool isA = i < (NUM_LEDS / 2);
-    CRGB newcolor = CHSV( hue8, sat8, isA ? bri8a : bri8b);
+    uint8_t bri8 = brightness_by_index(i, bri8a, bri8b);
+    // Serial.println(bri8);
+    CRGB newcolor = CHSV( hue8, sat8, bri8);
     
     uint16_t pixelnumber = i;
     pixelnumber = (NUM_LEDS-1) - pixelnumber;
@@ -154,8 +201,9 @@ void pride(uint8_t bri8a, uint8_t bri8b)
 void debug_color(uint8_t bri8a, uint8_t bri8b) 
 {
   for( uint16_t i = 0 ; i < NUM_LEDS; i++) {
-    bool isA = i < (NUM_LEDS / 2);
-    CRGB newcolor = CHSV( 90, 255, isA ? bri8a : bri8b);
+    uint8_t bri8 = brightness_by_index(i, bri8a, bri8b);
+    // Serial.println(bri8);
+    CRGB newcolor = CHSV( 90, 255, bri8);
     
     uint16_t pixelnumber = i;
     pixelnumber = (NUM_LEDS-1) - pixelnumber;
@@ -317,25 +365,25 @@ void loop()
   // Serial.print(",wavelengthVariance:");
   // Serial.println(wavelengthVariance);
 
-  double normalized = normalize(max,min,currVal);
-  Serial.print("actual_value:");
-  Serial.print(normalized);
-  Serial.print(",progress_towards_recording:");
-  int progress_towards_recording = -100 + recordingLength * 4;
-  Serial.print(progress_towards_recording > 100 ? 100 : progress_towards_recording);
-  Serial.print(",recording:");
-  if (isTouched) {
-    if (aboveMiddle) {
-      Serial.println(100);
-    } else {
-      Serial.println(-100);
-    }
-  } else {
-    if (recordingAComplete) {
-      Serial.println(normalize(recordingAMax,recordingAMin,completeRecordingA[samplesSoFar % recordingCount]));
-    }
-    else {
-      Serial.println(0);
-    }
-  }
+  // double normalized = normalize(max,min,currVal);
+  // Serial.print("actual_value:");
+  // Serial.print(normalized);
+  // Serial.print(",progress_towards_recording:");
+  // int progress_towards_recording = -100 + recordingLength * 4;
+  // Serial.print(progress_towards_recording > 100 ? 100 : progress_towards_recording);
+  // Serial.print(",recording:");
+  // if (isTouched) {
+  //   if (aboveMiddle) {
+  //     Serial.println(100);
+  //   } else {
+  //     Serial.println(-100);
+  //   }
+  // } else {
+  //   if (recordingAComplete) {
+  //     Serial.println(normalize(recordingAMax,recordingAMin,completeRecordingA[samplesSoFar % recordingCount]));
+  //   }
+  //   else {
+  //     Serial.println(0);
+  //   }
+  // }
 }
