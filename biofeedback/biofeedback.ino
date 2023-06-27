@@ -122,6 +122,8 @@ uint8_t to_brightness(double max, double min, double val) {
 // Continuos recording rather than first take
 // Back to uint8_t
 // Add red reading as well as IR
+// Remove shift_and_insert, use modulo for something faster
+// 255 or 256?
 
 uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
 {
@@ -208,6 +210,18 @@ void debug_color(uint8_t bri8a, uint8_t bri8b)
     uint16_t pixelnumber = i;
     pixelnumber = (NUM_LEDS-1) - pixelnumber;
     leds[pixelnumber] = newcolor;
+  }
+}
+
+uint8_t sharp_wave(double wavelength, int cyclesSinceLastDip) {
+  double progress = ((2 * 255 * cyclesSinceLastDip) / wavelength);
+
+  if (cyclesSinceLastDip < (wavelength / 4)) {
+    return (255 / 2) - progress;
+  } else if (cyclesSinceLastDip < ((wavelength * 3) / 4)) {
+    return progress - (255 / 2);
+  } else {
+    return (5 * 255 / 2) - progress;
   }
 }
 
