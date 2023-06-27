@@ -12,37 +12,28 @@ CRGB leds[NUM_LEDS];
 
 MAX30105 particleSensor;
 
-const int bufferCount = 20;
-double weightNumerator = 1.0;
-double weightDenominator = 1.0;
-double weights [bufferCount];
-double weightsSum = 0;
-double values [bufferCount];
+const uint8_t bufferCount = 20;
+uint32_t values [bufferCount];
 
-const int recordingCount = 50;
-double recording [recordingCount];
-int recordingLength = 0;
+const uint8_t recordingCount = 50;
+uint8_t recording [recordingCount];
+uint8_t recordingLength = 0;
 
-double completeRecordingA [recordingCount];
-double completeRecordingB [recordingCount];
-double recordingAMax;
-double recordingAMin;
-double recordingBMax;
-double recordingBMin;
-bool recordingAComplete = false;
-bool recordingBComplete = false;
+uint32_t typical_wavelength = 11;
+bool wavelengthsAreReady = false;
+uint32_t wavelengthA = -1;
+uint32_t wavelengthB = -1;
 bool changeNextRecordingIsAOnUntouch = false;
 bool nextRecordingIsA = true;
-// int endOfRecording;
 
-int samplesSoFar = 0;
-long unblockedValue = 0;
+uint32_t samplesSoFar = 0;
+uint32_t unblockedValue = 0;
 
-const int wavelengthCount = 5;
-int wavelengthsSoFar = 0;
-int wavelengths [wavelengthCount];
+const uint8_t wavelengthCount = 5;
+uint8_t wavelengthsIndex = 0;
+uint32_t wavelengths [wavelengthCount];
 bool aboveMiddle = true;
-int lastDipStart = 0;
+uint32_t lastDipStart = 0;
 
 void setup()
 {
@@ -66,12 +57,6 @@ void setup()
 
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
 
-  double currWeight = 1;
-  for (int i = 0; i < bufferCount; i++) {
-    weights[bufferCount - 1 - i] = currWeight;
-    weightsSum += currWeight;
-    currWeight = currWeight * weightDenominator / weightNumerator;
-  }
 
   //Take an average of IR readings at power up
   unblockedValue = 0;
@@ -80,6 +65,11 @@ void setup()
     unblockedValue += particleSensor.getIR(); //Read the IR value
   }
   unblockedValue /= 32;
+
+  //Fill wavelengths with a good default val
+  for (uint32_t i = 0; i < wavelengthCount; i++) {
+    wavelengths[i] = typical_wavelength;
+  }
 
   // tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS)
@@ -90,25 +80,11 @@ void setup()
   FastLED.setBrightness(BRIGHTNESS);
 }
 
-void shiftAndInsert(double array[], int bufferCount, double newValue) {
-  for (int i = bufferCount - 1; i > 0; i--) {
-    array[i] = array[i - 1];
-  }
-  array[0] = newValue;
-}
-
-void shiftAndInsert(int array[], int bufferCount, double newValue) {
-  for (int i = bufferCount - 1; i > 0; i--) {
-    array[i] = array[i - 1];
-  }
-  array[0] = newValue;
-}
-
 double normalize(double max, double min, double val) {
   return ((2*val - (max+min)) / (max - min)) * 100;
 }
 
-uint8_t to_brightness(double max, double min, double val) {
+uint8_t to_brightness(uint32_t max, uint32_t min, uint32_t val) {
   return (val - min) * 255 / (max - min);
 }
 
@@ -131,41 +107,31 @@ uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
   uint8_t one_third_brigthness = 255 / 3;
   uint8_t two_thirds_brigthness = 2 * 255 / 3;
   if (i < one_sixth_of_strip) {
-    // Serial.println('z');
     return bri8a;
   } else if ((one_sixth_of_strip * 1) < i && i < (one_sixth_of_strip * 2)) {
     if (one_third_brigthness < bri8a) {
-      // Serial.println('a');
       return bri8a;
     } else {
-      // Serial.println('b');
       return 0;
     }
   } else if ((one_sixth_of_strip * 2) < i && i < (one_sixth_of_strip * 3)) {
     if (two_thirds_brigthness < bri8a) {
-      // Serial.println('c');
       return bri8a;
     } else {
-      // Serial.println('d');
       return 0;
     }
   } else if ((one_sixth_of_strip * 3) < i && i < (one_sixth_of_strip * 4)) {
-    // Serial.println('e');
     return bri8b;
   } else if ((one_sixth_of_strip * 4) < i && i < (one_sixth_of_strip * 5)) {
     if (one_third_brigthness < bri8b) {
-      // Serial.println('f');
       return bri8b;
     } else {
-      // Serial.println('g');
       return 0;
     }
   } else if ((one_sixth_of_strip * 5) < i) {
     if (two_thirds_brigthness < bri8b) {
-      // Serial.println('h');
       return bri8b;
     } else {
-      // Serial.println('i');
       return 0;
     }
   }
@@ -213,33 +179,43 @@ void debug_color(uint8_t bri8a, uint8_t bri8b)
   }
 }
 
-uint8_t sharp_wave(double wavelength, int cyclesSinceLastDip) {
-  double progress = ((2 * 255 * cyclesSinceLastDip) / wavelength);
+uint8_t sharp_wave_old(double wavelength, int samplesSinceLastDip) {
+  double progress = ((2 * 255 * samplesSinceLastDip) / wavelength);
 
-  if (cyclesSinceLastDip < (wavelength / 4)) {
+  if (samplesSinceLastDip < (wavelength / 4)) {
     return (255 / 2) - progress;
-  } else if (cyclesSinceLastDip < ((wavelength * 3) / 4)) {
+  } else if (samplesSinceLastDip < ((wavelength * 3) / 4)) {
     return progress - (255 / 2);
   } else {
     return (5 * 255 / 2) - progress;
   }
 }
 
+uint8_t sharp_wave(uint32_t wavelength, uint32_t samplesSinceLastDip) {
+  double progress = ((2 * 255 * samplesSinceLastDip) / wavelength);
+
+  if (samplesSinceLastDip < (wavelength / 2)) {
+    return progress;
+  } else {
+    return 2 * 255 - progress;
+  }
+}
+
 void loop()
 {
   // INITIAL COLLECTION
-  double currVal = double (particleSensor.getIR());
+  uint32_t currVal = particleSensor.getIR();
   bool isTouched = currVal > unblockedValue * 10;
-  shiftAndInsert(values, bufferCount, currVal);
-  samplesSoFar++; 
+  values[samplesSoFar % bufferCount] = currVal;
+  samplesSoFar++;
   if (samplesSoFar < bufferCount) {
     return;
   }
 
   // MAX AND MIN FOR NORMALIZATION
-  double max = currVal;
-  double min = currVal;
-  for (int i = 0; i < bufferCount; i++) {
+  uint32_t max = currVal;
+  uint32_t min = currVal;
+  for (uint32_t i = 0; i < bufferCount; i++) {
     if (max < values[i]) {
       max = values[i];
     }
@@ -247,98 +223,48 @@ void loop()
       min = values[i];
     }
   }
-  double middle = (max + min) / 2;
+  uint32_t middle = (max + min) / 2;
 
   // WAVELENGTH GATHERING
+  uint32_t samplesSinceLastDip = samplesSoFar - lastDipStart;
   if (aboveMiddle && currVal < middle) {
     aboveMiddle = false;
-    shiftAndInsert(wavelengths, wavelengthCount, samplesSoFar - lastDipStart);
-    wavelengthsSoFar++;
+    wavelengths[wavelengthsIndex] = samplesSinceLastDip;
+    wavelengthsIndex++;
+    if (wavelengthsIndex == wavelengthCount) {
+      wavelengthsIndex = 0;
+      wavelengthsAreReady = true;
+    }
     lastDipStart = samplesSoFar;
   } else if (!aboveMiddle && currVal >= middle) {
     aboveMiddle = true;
   }
 
   // WAVELENGTH AVG AND VARIANCE
-  double wavelengthSum = 0.0;
-  double wavelengthAvg = 0.0;
-  double wavelengthVariance = 0.0;
-  if (wavelengthsSoFar >= wavelengthCount) {
-    for (int i = 0; i < wavelengthCount; i++) {
-      wavelengthSum += double (wavelengths[i]);
-    }
-    wavelengthAvg = wavelengthSum / wavelengthCount;
-    for (int i = 0; i < wavelengthCount; i++) {
-      double error = double (wavelengths[i]) - wavelengthAvg;
-      wavelengthVariance += error * error;
-    }
+  uint32_t wavelengthSum = 0;
+  uint32_t wavelengthAvg = typical_wavelength;
+  uint32_t wavelengthVariance = 0;
+  for (uint32_t i = 0; i < wavelengthCount; i++) {
+    wavelengthSum += wavelengths[i];
+  }
+  wavelengthAvg = wavelengthSum / wavelengthCount;
+  for (uint32_t i = 0; i < wavelengthCount; i++) {
+    uint32_t error = wavelengths[i] - wavelengthAvg;
+    wavelengthVariance += error * error;
   }
 
   // RECORDING
-  if (isTouched && wavelengthVariance < wavelengthCount) {
-    int recordingIndex = recordingLength % recordingCount;
-    recording[recordingIndex] = currVal;
-    recordingLength++;
-    if (recordingLength >= recordingCount && recordingIndex == 0) {
-      // Save, and get max and min
+  if (isTouched && wavelengthsAreReady && wavelengthVariance < wavelengthCount) {
+    if (recordingLength < recordingCount) {
+      recordingLength++;
+    }
+    if (recordingLength >= recordingCount) {
       changeNextRecordingIsAOnUntouch = true;
       if (nextRecordingIsA) {
-        recordingAMax = recording[0];
-        recordingAMin = recording[0];
-        for (int i = 0; i < recordingCount; i++) {
-          completeRecordingA[i] = recording[i];
-          if (recordingAMax < recording[i]) {
-            recordingAMax = recording[i];
-          }
-          if (recordingAMin > recording[i]) {
-            recordingAMin = recording[i];
-          }
-        }
-        recordingAComplete = true;
+        wavelengthA = wavelengthAvg;
       } else {
-        recordingBMax = recording[0];
-        recordingBMin = recording[0];
-        for (int i = 0; i < recordingCount; i++) {
-          completeRecordingB[i] = recording[i];
-          if (recordingBMax < recording[i]) {
-            recordingBMax = recording[i];
-          }
-          if (recordingBMin > recording[i]) {
-            recordingBMin = recording[i];
-          }
-        }
-        recordingBComplete = true;
+        wavelengthB = wavelengthAvg;
       }
-
-      // double * completeRecording;
-      // completeRecording = nextRecordingIsA ? completeRecordingA : completeRecordingB;
-      // double recordingMax = recording[0];
-      // double recordingMin = recording[0];
-      // for (int i = 0; i < recordingCount; i++) {
-      //   completeRecording[i] = recording[i];
-      //   if (recordingMax < recording[i]) {
-      //     recordingMax = recording[i];
-      //   }
-      //   if (recordingMin > recording[i]) {
-      //     recordingMin = recording[i];
-      //   }
-      // }
-
-      // if (nextRecordingIsA) {
-      //   recordingAComplete = true;
-      //   nextRecordingIsA = false;
-      //   recordingAMax = recordingMax;
-      //   recordingAMin = recordingMin;
-      // } else {
-      //   recordingBComplete = true;
-      //   nextRecordingIsA = true;
-      //   recordingBMax = recordingMax;
-      //   recordingBMin = recordingMin;
-      // }
-      // Chop off end to make a smoother wave
-      // Divide by wavelength average (but do it in a way that preserves more sig figs)
-      // int numWavesInRecording = int ((recordingCount * wavelengthCount) / wavelengthSum);
-      // endOfRecording = int ( ( ( double (numWavesInRecording) ) * wavelengthSum ) / wavelengthCount );
     }
   } else {
     recordingLength = 0;
@@ -350,14 +276,13 @@ void loop()
     recordingLength = 0;
   }
 
-  int recordingIndex = samplesSoFar % recordingCount;
   uint8_t brightnessA = 255;
   uint8_t brightnessB = 255;
-  if (recordingAComplete) {
-    brightnessA = to_brightness(recordingAMax, recordingAMin, completeRecordingA[recordingIndex]);
+  if (wavelengthA != -1) {
+    brightnessA = sharp_wave(wavelengthA, samplesSinceLastDip);
   }
-  if (recordingBComplete) {
-    brightnessB = to_brightness(recordingBMax, recordingBMin, completeRecordingB[recordingIndex]);
+  if (wavelengthB != -1) {
+    brightnessB = sharp_wave(wavelengthB, samplesSinceLastDip);
   }
   if (isTouched) {
     if (nextRecordingIsA) {
@@ -368,16 +293,16 @@ void loop()
   }
 
   // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
-  // pride(brightnessA, brightnessB);
   debug_color(brightnessA, brightnessB);
+  // pride(brightnessA, brightnessB);
   FastLED.show();
   
-  // Serial.print("currVal:");
-  // Serial.print(currVal);
-  // Serial.print(",unblockedVal:");
-  // Serial.print(unblockedValue);
-  // Serial.print(",wavelengthVariance:");
-  // Serial.println(wavelengthVariance);
+  Serial.print("currVal:");
+  Serial.print(currVal);
+  Serial.print(",unblockedVal:");
+  Serial.print(unblockedValue);
+  Serial.print(",wavelengthVariance:");
+  Serial.println(wavelengthVariance);
 
   // double normalized = normalize(max,min,currVal);
   // Serial.print("actual_value:");
