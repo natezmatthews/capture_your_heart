@@ -161,8 +161,9 @@ void pride(uint8_t bri8a, uint8_t bri8b)
     
     uint16_t pixelnumber = i;
     pixelnumber = (NUM_LEDS-1) - pixelnumber;
+    leds[pixelnumber] = newcolor;
     
-    nblend( leds[pixelnumber], newcolor, 64);
+    // nblend( leds[pixelnumber], newcolor, 32);
   }
 }
 
@@ -179,25 +180,14 @@ void debug_color(uint8_t bri8a, uint8_t bri8b)
   }
 }
 
-uint8_t sharp_wave_old(double wavelength, int samplesSinceLastDip) {
-  double progress = ((2 * 255 * samplesSinceLastDip) / wavelength);
+uint8_t sharp_wave(uint32_t wavelength) {
+  uint32_t ms = millis() % wavelength;
+  uint32_t progress = ((2 * 255 * ms) / wavelength);
 
-  if (samplesSinceLastDip < (wavelength / 4)) {
-    return (255 / 2) - progress;
-  } else if (samplesSinceLastDip < ((wavelength * 3) / 4)) {
-    return progress - (255 / 2);
-  } else {
-    return (5 * 255 / 2) - progress;
-  }
-}
-
-uint8_t sharp_wave(uint32_t wavelength, uint32_t samplesSinceLastDip) {
-  double progress = ((2 * 255 * samplesSinceLastDip) / wavelength);
-
-  if (samplesSinceLastDip < (wavelength / 2)) {
+  if (ms < (wavelength / 2)) {
     return progress;
   } else {
-    return 2 * 255 - progress;
+    return (2 * 255) - progress;
   }
 }
 
@@ -207,7 +197,7 @@ void loop()
   uint32_t currVal = particleSensor.getIR();
   bool isTouched = currVal > unblockedValue * 10;
   values[samplesSoFar % bufferCount] = currVal;
-  samplesSoFar++;
+  samplesSoFar++; 
   if (samplesSoFar < bufferCount) {
     return;
   }
@@ -226,16 +216,17 @@ void loop()
   uint32_t middle = (max + min) / 2;
 
   // WAVELENGTH GATHERING
-  uint32_t samplesSinceLastDip = samplesSoFar - lastDipStart;
+  uint32_t ms = millis();
+  uint32_t msSinceLastDip = ms - lastDipStart;
   if (aboveMiddle && currVal < middle) {
     aboveMiddle = false;
-    wavelengths[wavelengthsIndex] = samplesSinceLastDip;
+    wavelengths[wavelengthsIndex] = msSinceLastDip;
     wavelengthsIndex++;
     if (wavelengthsIndex == wavelengthCount) {
       wavelengthsIndex = 0;
       wavelengthsAreReady = true;
     }
-    lastDipStart = samplesSoFar;
+    lastDipStart = ms;
   } else if (!aboveMiddle && currVal >= middle) {
     aboveMiddle = true;
   }
@@ -254,7 +245,7 @@ void loop()
   }
 
   // RECORDING
-  if (isTouched && wavelengthsAreReady && wavelengthVariance < wavelengthCount) {
+  if (isTouched && wavelengthsAreReady && wavelengthVariance < 10000) {
     if (recordingLength < recordingCount) {
       recordingLength++;
     }
@@ -279,10 +270,10 @@ void loop()
   uint8_t brightnessA = 255;
   uint8_t brightnessB = 255;
   if (wavelengthA != -1) {
-    brightnessA = sharp_wave(wavelengthA, samplesSinceLastDip);
+    brightnessA = sharp_wave(wavelengthA);
   }
   if (wavelengthB != -1) {
-    brightnessB = sharp_wave(wavelengthB, samplesSinceLastDip);
+    brightnessB = sharp_wave(wavelengthB);
   }
   if (isTouched) {
     if (nextRecordingIsA) {
@@ -293,16 +284,24 @@ void loop()
   }
 
   // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
-  debug_color(brightnessA, brightnessB);
-  // pride(brightnessA, brightnessB);
+  // debug_color(brightnessA, brightnessB);
+  pride(brightnessA, brightnessB);
   FastLED.show();
   
-  Serial.print("currVal:");
-  Serial.print(currVal);
-  Serial.print(",unblockedVal:");
-  Serial.print(unblockedValue);
+  // Serial.print("currVal:");
+  // Serial.print(currVal);
+  // Serial.print(",unblockedVal:");
+  // Serial.print(unblockedValue);
+  Serial.print("aboveMiddle:");
+  Serial.print(aboveMiddle);
   Serial.print(",wavelengthVariance:");
-  Serial.println(wavelengthVariance);
+  Serial.print(wavelengthVariance);
+  Serial.print(",wavelengthAvg:");
+  Serial.print(wavelengthAvg);
+  Serial.print(",wavelengthA:");
+  Serial.print(wavelengthA);
+  Serial.print(",wavelengthB:");
+  Serial.println(wavelengthB);
 
   // double normalized = normalize(max,min,currVal);
   // Serial.print("actual_value:");
