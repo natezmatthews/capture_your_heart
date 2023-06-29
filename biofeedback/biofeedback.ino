@@ -12,28 +12,29 @@ CRGB leds[NUM_LEDS];
 
 MAX30105 particleSensor;
 
-const uint8_t bufferCount = 20;
+uint32_t samplesSoFar = 0;
+uint32_t unblockedValue = 0;
+
+const uint8_t bufferCount = 20; // Magic number
 uint32_t values [bufferCount];
 
-const uint8_t recordingCount = 50;
-uint8_t recording [recordingCount];
-uint8_t recordingLength = 0;
-
-uint32_t typical_wavelength = 11;
+const uint8_t wavelengthCount = 5; // Magic number
+uint8_t wavelengthsIndex = 0;
+uint32_t wavelengths [wavelengthCount];
+bool aboveMiddle = true;
+uint32_t lastDipStart = 0;
 bool wavelengthsAreReady = false;
+
+uint8_t max_log_variance = 1;
+uint8_t min_log_variance = 255;
+
 uint32_t wavelengthA = -1;
 uint32_t wavelengthB = -1;
 bool changeNextRecordingIsAOnUntouch = false;
 bool nextRecordingIsA = true;
 
-uint32_t samplesSoFar = 0;
-uint32_t unblockedValue = 0;
-
-const uint8_t wavelengthCount = 5;
-uint8_t wavelengthsIndex = 0;
-uint32_t wavelengths [wavelengthCount];
-bool aboveMiddle = true;
-uint32_t lastDipStart = 0;
+const uint8_t recordingCount = 50; // Magic number
+uint8_t recordingLength = 0;
 
 void setup()
 {
@@ -47,6 +48,7 @@ void setup()
     while (1);
   }
 
+   // Magic numbers
   //Setup to sense a nice looking saw tooth on the plotter
   byte ledBrightness = 0x3F; //Options: 0=Off to 255=50mA
   byte sampleAverage = 8; //Options: 1, 2, 4, 8, 16, 32
@@ -66,11 +68,6 @@ void setup()
   }
   unblockedValue /= 32;
 
-  //Fill wavelengths with a good default val
-  for (uint32_t i = 0; i < wavelengthCount; i++) {
-    wavelengths[i] = typical_wavelength;
-  }
-
   // tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS)
     .setCorrection(TypicalLEDStrip)
@@ -84,22 +81,13 @@ double normalize(double max, double min, double val) {
   return ((2*val - (max+min)) / (max - min)) * 100;
 }
 
+uint8_t map_me(uint8_t x, uint8_t in_min, uint8_t in_max, uint8_t out_min, uint8_t out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 uint8_t to_brightness(uint32_t max, uint32_t min, uint32_t val) {
   return (val - min) * 255 / (max - min);
 }
-
-// TODO:
-// Flicker rainbow
-// Second recording
-// Different domes
-// Loading animation for good recording
-// Sine wave instead of raw heartbeat
-// Reimplement cutting off end of recording
-// Continuos recording rather than first take
-// Back to uint8_t
-// Add red reading as well as IR
-// Remove shift_and_insert, use modulo for something faster
-// 255 or 256?
 
 uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
 {
@@ -108,27 +96,27 @@ uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
   uint8_t two_thirds_brigthness = 2 * 255 / 3;
   if (i < one_sixth_of_strip) {
     return bri8a;
-  } else if ((one_sixth_of_strip * 1) < i && i < (one_sixth_of_strip * 2)) {
+  } else if ((one_sixth_of_strip * 1) <= i && i < (one_sixth_of_strip * 2)) {
     if (one_third_brigthness < bri8a) {
       return bri8a;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 2) < i && i < (one_sixth_of_strip * 3)) {
+  } else if ((one_sixth_of_strip * 2) <= i && i < (one_sixth_of_strip * 3)) {
     if (two_thirds_brigthness < bri8a) {
       return bri8a;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 3) < i && i < (one_sixth_of_strip * 4)) {
+  } else if ((one_sixth_of_strip * 3) <= i && i < (one_sixth_of_strip * 4)) {
     return bri8b;
-  } else if ((one_sixth_of_strip * 4) < i && i < (one_sixth_of_strip * 5)) {
+  } else if ((one_sixth_of_strip * 4) <= i && i < (one_sixth_of_strip * 5)) {
     if (one_third_brigthness < bri8b) {
       return bri8b;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 5) < i) {
+  } else if ((one_sixth_of_strip * 5) <= i) {
     if (two_thirds_brigthness < bri8b) {
       return bri8b;
     } else {
@@ -167,19 +155,6 @@ void pride(uint8_t bri8a, uint8_t bri8b)
   }
 }
 
-void debug_color(uint8_t bri8a, uint8_t bri8b) 
-{
-  for( uint16_t i = 0 ; i < NUM_LEDS; i++) {
-    uint8_t bri8 = brightness_by_index(i, bri8a, bri8b);
-    // Serial.println(bri8);
-    CRGB newcolor = CHSV( 90, 255, bri8);
-    
-    uint16_t pixelnumber = i;
-    pixelnumber = (NUM_LEDS-1) - pixelnumber;
-    leds[pixelnumber] = newcolor;
-  }
-}
-
 uint8_t wavelength_to_wave(uint32_t wavelength) {
   uint32_t ms = millis() % wavelength;
   // sin takes radians and returns -1 to 1
@@ -190,7 +165,7 @@ void loop()
 {
   // INITIAL COLLECTION
   uint32_t currVal = particleSensor.getIR();
-  bool isTouched = currVal > unblockedValue * 10;
+  bool isTouched = currVal > unblockedValue * 10; // Magic number
   values[samplesSoFar % bufferCount] = currVal;
   samplesSoFar++; 
   if (samplesSoFar < bufferCount) {
@@ -228,7 +203,7 @@ void loop()
 
   // WAVELENGTH AVG AND VARIANCE
   uint32_t wavelengthSum = 0;
-  uint32_t wavelengthAvg = typical_wavelength;
+  uint32_t wavelengthAvg = 950;
   uint32_t wavelengthVariance = 0;
   for (uint32_t i = 0; i < wavelengthCount; i++) {
     wavelengthSum += wavelengths[i];
@@ -238,9 +213,15 @@ void loop()
     uint32_t error = wavelengths[i] - wavelengthAvg;
     wavelengthVariance += error * error;
   }
+  uint8_t log_variance = log(wavelengthVariance);
+  if (log_variance > max_log_variance) {
+    max_log_variance = log_variance;
+  } if (log_variance < min_log_variance) {
+    min_log_variance = log_variance;
+  }
 
   // RECORDING
-  if (isTouched && wavelengthsAreReady && wavelengthVariance < 10000) {
+  if (isTouched && wavelengthsAreReady && wavelengthVariance < 10000) { // Magic number
     if (recordingLength < recordingCount) {
       recordingLength++;
     }
@@ -278,7 +259,7 @@ void loop()
     }
   }
 
-  // fill_solid(leds, NUM_LEDS, CHSV(127, 255, brightness));
+  // fill_solid(leds, NUM_LEDS, CHSV(80, map_me(log_variance, min_log_variance, max_log_variance, 0, 255), brightnessA));
   // debug_color(brightnessA, brightnessB);
   pride(brightnessA, brightnessB);
   FastLED.show();
