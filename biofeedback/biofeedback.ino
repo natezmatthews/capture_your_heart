@@ -180,15 +180,10 @@ void debug_color(uint8_t bri8a, uint8_t bri8b)
   }
 }
 
-uint8_t sharp_wave(uint32_t wavelength) {
+uint8_t wavelength_to_wave(uint32_t wavelength) {
   uint32_t ms = millis() % wavelength;
-  uint32_t progress = ((2 * 255 * ms) / wavelength);
-
-  if (ms < (wavelength / 2)) {
-    return progress;
-  } else {
-    return (2 * 255) - progress;
-  }
+  // sin takes radians and returns -1 to 1
+  return (sin(TWO_PI * ms / wavelength) + 1) * 255 / 2;
 }
 
 void loop()
@@ -270,10 +265,10 @@ void loop()
   uint8_t brightnessA = 255;
   uint8_t brightnessB = 255;
   if (wavelengthA != -1) {
-    brightnessA = sharp_wave(wavelengthA);
+    brightnessA = wavelength_to_wave(wavelengthA * 2);
   }
   if (wavelengthB != -1) {
-    brightnessB = sharp_wave(wavelengthB);
+    brightnessB = wavelength_to_wave(wavelengthB * 2);
   }
   if (isTouched) {
     if (nextRecordingIsA) {
