@@ -13,7 +13,6 @@ CRGB leds[NUM_LEDS];
 MAX30105 particleSensor;
 
 uint32_t samplesSoFar = 0;
-uint32_t unblockedValue = 0;
 
 const uint8_t bufferCount = 20; // Magic number
 uint32_t values [bufferCount];
@@ -59,15 +58,6 @@ void setup()
 
   particleSensor.setup(ledBrightness, sampleAverage, ledMode, sampleRate, pulseWidth, adcRange); //Configure sensor with these settings
 
-
-  //Take an average of IR readings at power up
-  unblockedValue = 0;
-  for (byte x = 0 ; x < 32 ; x++)
-  {
-    unblockedValue += particleSensor.getIR(); //Read the IR value
-  }
-  unblockedValue /= 32;
-
   // tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE,DATA_PIN,COLOR_ORDER>(leds, NUM_LEDS)
     .setCorrection(TypicalLEDStrip)
@@ -91,32 +81,36 @@ uint8_t to_brightness(uint32_t max, uint32_t min, uint32_t val) {
 
 uint8_t brightness_by_index(uint16_t i, uint8_t bri8a, uint8_t bri8b)
 {
-  uint16_t one_sixth_of_strip = NUM_LEDS / 6;
+  uint16_t dome1a = 19;
+  uint16_t dome1b = 48;
+  uint16_t dome1c = 75;
+  uint16_t dome2a = 105;
+  uint16_t dome2b = 124;
   uint8_t one_third_brigthness = 255 / 3;
   uint8_t two_thirds_brigthness = 2 * 255 / 3;
-  if (i < one_sixth_of_strip) {
+  if (i < dome1a) {
     return bri8a;
-  } else if ((one_sixth_of_strip * 1) <= i && i < (one_sixth_of_strip * 2)) {
+  } else if (dome1a <= i && i < dome1b) {
     if (one_third_brigthness < bri8a) {
       return bri8a;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 2) <= i && i < (one_sixth_of_strip * 3)) {
+  } else if (dome1b <= i && i < dome1c) {
     if (two_thirds_brigthness < bri8a) {
       return bri8a;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 3) <= i && i < (one_sixth_of_strip * 4)) {
+  } else if (dome1c <= i && i < dome2a) {
     return bri8b;
-  } else if ((one_sixth_of_strip * 4) <= i && i < (one_sixth_of_strip * 5)) {
+  } else if (dome2a <= i && i < dome2b) {
     if (one_third_brigthness < bri8b) {
       return bri8b;
     } else {
       return 0;
     }
-  } else if ((one_sixth_of_strip * 5) <= i) {
+  } else if (dome2b <= i) {
     if (two_thirds_brigthness < bri8b) {
       return bri8b;
     } else {
@@ -165,7 +159,7 @@ void loop()
 {
   // INITIAL COLLECTION
   uint32_t currVal = particleSensor.getIR();
-  bool isTouched = currVal > unblockedValue * 10; // Magic number
+  bool isTouched = currVal > 75000; // Magic number
   values[samplesSoFar % bufferCount] = currVal;
   samplesSoFar++; 
   if (samplesSoFar < bufferCount) {
@@ -213,12 +207,12 @@ void loop()
     uint32_t error = wavelengths[i] - wavelengthAvg;
     wavelengthVariance += error * error;
   }
-  uint8_t log_variance = log(wavelengthVariance);
-  if (log_variance > max_log_variance) {
-    max_log_variance = log_variance;
-  } if (log_variance < min_log_variance) {
-    min_log_variance = log_variance;
-  }
+  // uint8_t log_variance = log(wavelengthVariance);
+  // if (log_variance > max_log_variance) {
+  //   max_log_variance = log_variance;
+  // } if (log_variance < min_log_variance) {
+  //   min_log_variance = log_variance;
+  // }
 
   // RECORDING
   if (isTouched && wavelengthsAreReady && wavelengthVariance < 10000) { // Magic number
@@ -264,20 +258,22 @@ void loop()
   pride(brightnessA, brightnessB);
   FastLED.show();
   
-  // Serial.print("currVal:");
-  // Serial.print(currVal);
-  // Serial.print(",unblockedVal:");
-  // Serial.print(unblockedValue);
-  Serial.print("aboveMiddle:");
-  Serial.print(aboveMiddle);
-  Serial.print(",wavelengthVariance:");
-  Serial.print(wavelengthVariance);
-  Serial.print(",wavelengthAvg:");
-  Serial.print(wavelengthAvg);
-  Serial.print(",wavelengthA:");
-  Serial.print(wavelengthA);
-  Serial.print(",wavelengthB:");
-  Serial.println(wavelengthB);
+  Serial.print("max:");
+  Serial.print(max);
+  Serial.print(",min:");
+  Serial.print(min);
+  Serial.print(",currVal:");
+  Serial.println(currVal);
+  // Serial.print(",aboveMiddle:");
+  // Serial.print(aboveMiddle);
+  // Serial.print(",wavelengthVariance:");
+  // Serial.print(wavelengthVariance);
+  // Serial.print(",wavelengthAvg:");
+  // Serial.print(wavelengthAvg);
+  // Serial.print(",wavelengthA:");
+  // Serial.print(wavelengthA);
+  // Serial.print(",wavelengthB:");
+  // Serial.println(wavelengthB);
 
   // double normalized = normalize(max,min,currVal);
   // Serial.print("actual_value:");
